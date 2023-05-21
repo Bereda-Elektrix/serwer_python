@@ -1,0 +1,137 @@
+kod główny
+from flask import Flask, jsonify
+import paho.mqtt.client as mqtt
+import random
+import threading
+
+app = Flask(__name__)
+
+# Zmienna globalna do przechowywania pulsów
+cached_pulse = None
+lock = threading.Lock()
+
+# Konfiguracja MQTT
+mqtt_server = "localhost"
+mqtt_port = 1883
+mqtt_topic = "test/puls"
+
+# Obsługa połączenia z brokerem MQTT
+def on_connect(client, userdata, flags, rc):
+    print("Połączono z brokerem MQTT")
+    client.subscribe(mqtt_topic)
+
+# Obsługa otrzymanych wiadomości MQTT
+def on_message(client, userdata, msg):
+    global cached_pulse
+    puls = msg.payload.decode()
+    with lock:
+        cached_pulse = puls
+
+# Inicjalizacja klienta MQTT
+client = mqtt.Client()
+client.on_connect = on_connect
+client.on_message = on_message
+client.connect(mqtt_server, mqtt_port, 60)
+client.loop_start()
+
+# Endpoint do pobierania danych pulsów
+@app.route('/puls', methods=['GET'])
+def get_puls():
+    with lock:
+        puls = cached_pulse
+    return jsonify({'puls': puls})
+
+# Endpoint strony głównej
+@app.route('/')
+def index():
+    return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Real Time Puls Data</title>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+            <script>
+                function getPulsData() {
+                    $.ajax({
+                        url: '/puls',
+                        type: 'GET',
+                        success: function(response) {
+                            $('#pulsData').text('Received Puls: ' + response.puls);
+                        },
+                        error: function() {
+                            $('#pulsData').text('Failed to fetch puls data');
+                        },
+                        complete: function() {
+                            setTimeout(getPulsData, 1000);
+                        }
+                    });
+                }
+                
+                $(document).ready(function() {
+                    getPulsData();
+                });
+            </script>
+        </head>
+        <body>
+            <div id="pulsData">Waiting for Puls data...</div>
+        </body>
+        </html>
+    '''
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+generator impulsu 
+import random
+import paho.mqtt.client as mqtt
+import time
+
+# Konfiguracja MQTT
+mqtt_server = "localhost"
+mqtt_port = 1883  # Ustaw ten port na taki sam jak w aplikacji Flask
+topic = "test/puls"
+
+def on_connect(client, userdata, flags, rc):
+    print("Połączono z MQTT")
+    client.subscribe(topic)
+
+client = mqtt.Client()
+client.on_connect = on_connect
+client.connect(mqtt_server, mqtt_port, 60)
+client.loop_start()
+
+# Główna pętla programu
+while True:
+    pulse_data = random.randint(60, 100)
+    client.publish(topic, pulse_data)
+    print(f"Wysłano puls: {pulse_data}")
+    time.sleep(5)
+   html strony
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real Time Puls Data</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            font-size: 24px;
+        }
+
+        #pulsData {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="pulsData">Waiting for Puls data...</div>
+
+    <script type="text/javascript">
+        var socket = io();
+        socket.on('puls_data', function(data) {
+            document.getElementById('pulsData').innerHTML = 'Received Puls: ' + data.puls;
+        });
+    </script>
+</body>
+</html>
