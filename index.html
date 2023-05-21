@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real Time Puls Data</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        var socket = io.connect('http://localhost:5000');
+        socket.on('puls_data', function(data) {
+            $('#pulsData').text('Received Puls: ' + data.puls);
+        });
+
+        function getPulsData() {
+            if ({{ is_user_logged_in }}) {
+                $.ajax({
+                    url: '/puls',
+                    type: 'GET',
+                    success: function(response) {
+                        $('#pulsData').text('Received Puls: ' + response.puls);
+                    },
+                    error: function() {
+                        $('#pulsData').text('Failed to fetch puls data');
+                    },
+                    complete: function() {
+                        setTimeout(getPulsData, 1000);
+                    }
+                });
+            } else {
+                $('#pulsData').text('Waiting for Puls data...');
+                setTimeout(getPulsData, 1000);
+            }
+        }
+
+        $(document).ready(function() {
+            getPulsData();
+        });
+    </script>
+</head>
+<body>
+    <div id="pulsData">Waiting for Puls data...</div>
+</body>
+</html>
