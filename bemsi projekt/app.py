@@ -65,7 +65,8 @@ def index():
         # Sprawdzenie, czy użytkownik już istnieje
         if username in users:
             return "User already exists"
-
+        if len(password) < 8 or any(ele.isupper() for ele in password)==0 or password.isalpha():
+            return "Password must contain 8 or more letters, have one big letter and one special letter"
         # Haszowanie hasła
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
 
@@ -74,8 +75,7 @@ def index():
 
         return redirect(url_for('login'))
 
-    # Prosta forma rejestracji - normalnie powinieneś zwrócić prawdziwy szablon HTML
-    return '''
+    # Prosta forma rejestracji 
         <form method="post">
             Username: <input type="text" name="username"><br>
             Password: <input type="password" name="password"><br>
@@ -100,7 +100,7 @@ def login():
 
         return "Invalid credentials"
 
-    # Prosta forma logowania - normalnie powinieneś zwrócić prawdziwy szablon HTML
+    # Prosta forma logowania 
     return '''
         <form method="post">
             Username: <input type="text" name="username"><br>
