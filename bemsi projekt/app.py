@@ -4,6 +4,8 @@ import paho.mqtt.client as mqtt
 import random
 import threading
 import hashlib
+import os
+import binascii
 
 app = Flask(__name__)
 app.secret_key = "secret_key"  # Sekretne klucz sesji
@@ -21,14 +23,32 @@ mqtt_server = "localhost"
 mqtt_port = 1883
 mqtt_topic = "test/puls"
 
-# Proste przechowywanie danych logowania
-users = {"admin": {"password": "admin", "hashed_password": hashlib.sha256("admin".encode()).hexdigest()}}
+def hash_password(password):
+    # Generowanie soli
+    salt = os.urandom(16)
+    
+    # Haszowanie hasła z dodaną solą
+    hashed_password = hashlib.pbkdf2_hmac('sha256',password.encode('utf-8'),salt,100000)
 
-# Klasa użytkownika zgodna z interfejsem UserMixin
+    # Zapisanie soli razem z hashem
+    password_storage = salt + hashed_password
+
+    return binascii.hexlify(password_storage).decode()
+
+def check_password(stored_password, user_password):
+    # Wyciągnięcie soli z przechowywanego hasła
+    salt = binascii.unhexlify(stored_password)[:16]
+
+    # Haszowanie hasła wpisanego przez użytkownika
+    hashed_user_password = hashlib.pbkdf2_hmac('sha256',user_password.encode('utf-8'),salt,100000)
+    # Sprawdzenie czy hashe się zgadzają
+    return hashed_user_password == binascii.unhexlify(stored_password)[16:]
+# Proste przechowywanie danych logowania
+users = {"admin": {"hashed_password": hash_password("admin")}}
+
 class User(UserMixin):
     pass
 
-# Funkcja do ładowania użytkownika na podstawie nazwy użytkownika
 @login_manager.user_loader
 def load_user(username):
     if username in users:
@@ -36,46 +56,42 @@ def load_user(username):
         user.id = username
         return user
 
-# Obsługa połączenia z brokerem MQTT
 def on_connect(client, userdata, flags, rc):
     print("Połączono z brokerem MQTT")
     client.subscribe(mqtt_topic)
 
-# Obsługa otrzymanych wiadomości MQTT
 def on_message(client, userdata, msg):
     global cached_pulse
     puls = msg.payload.decode()
     with lock:
         cached_pulse = puls
 
-# Inicjalizacja klienta MQTT
 client = mqtt.Client()
 client.on_connect = on_connect
 client.on_message = on_message
 client.connect(mqtt_server, mqtt_port, 60)
 client.loop_start()
 
-# Strona rejestracji - teraz domyślna strona
 @app.route('/', methods=['GET', 'POST'])
 def index():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
 
-        # Sprawdzenie, czy użytkownik już istnieje
         if username in users:
             return "User already exists"
-        if len(password) < 8 or any(ele.isupper() for ele in password)==0 or password.isalpha():
-            return "Password must contain 8 or more letters, have one big letter and one special letter"
-        # Haszowanie hasła
-        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        if len(password) < 12:
+            return "Hasło musi zawierać conajmniej 12 liter"
+
+        # Hashowanie hasła
+        hashed_password = hash_password(password)
 
         # Dodanie użytkownika do słownika
-        users[username] = {"password": password, "hashed_password": hashed_password}
+        users[username] = {"hashed_password": hashed_password}
 
         return redirect(url_for('login'))
 
-    # Prosta forma rejestracji 
+    return '''
         <form method="post">
             Username: <input type="text" name="username"><br>
             Password: <input type="password" name="password"><br>
@@ -92,15 +108,14 @@ def login():
         password = request.form.get('password')
 
         # Sprawdzenie, czy użytkownik istnieje i czy hasło jest poprawne
-        if username in users and hashlib.sha256(password.encode()).hexdigest() == users[username]["hashed_password"]:
-            user =User()
+        if username in users and check_password(users[username]["hashed_password"], password):
+            user = User()
             user.id = username
             login_user(user)  # Logowanie użytkownika
             return redirect(url_for('data'))
 
         return "Invalid credentials"
 
-    # Prosta forma logowania 
     return '''
         <form method="post">
             Username: <input type="text" name="username"><br>
@@ -111,14 +126,12 @@ def login():
         <a href="/">Register</a>
     '''
 
-# Endpoint do wylogowania użytkownika
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()  # Wylogowanie użytkownika
     return redirect(url_for('index'))
 
-# Endpoint do pobierania danych pulsów
 @app.route('/puls', methods=['GET'])
 @login_required
 def get_puls():
@@ -126,7 +139,6 @@ def get_puls():
         puls = cached_pulse
     return jsonify({'puls': puls})
 
-# Endpoint dla strony z danymi
 @app.route('/data')
 @login_required
 def data():
